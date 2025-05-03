@@ -1,0 +1,22 @@
+{
+  "name": "nuxt3-canvassing-app",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "start": "nuxt start"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "leaflet-draw": "^1.0.4",
+    "node-fetch": "^3.3.2",
+    "nuxt": "latest",
+    "podio-js": "^1.6.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.4",
+    "@types/leaflet-draw": "^0.4.10"
+  },
+  "type": "module"
+}
