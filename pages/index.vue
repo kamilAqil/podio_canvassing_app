@@ -6,63 +6,106 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
+
 let L, XLSX
 const leads = ref([])
 const map = ref(null)
-const drawnLayer = ref(null)
 const selectedLeads = ref([])
 
+function waitFor(check, interval = 100, maxAttempts = 50) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0
+    const timer = setInterval(() => {
+      if (check()) {
+        clearInterval(timer)
+        resolve(true)
+      } else if (++attempts > maxAttempts) {
+        clearInterval(timer)
+        reject(new Error('Timed out waiting for FreeHandShapes'))
+      }
+    }, interval)
+  })
+}
+
 onMounted(async () => {
-  if (process.client) {
-    // Dynamically import only on client
-    L = await import('leaflet').then(m => m.default)
-    await import('leaflet-draw')
-    XLSX = await import('xlsx')
+  if (!process.client) return
 
-    const { data } = await useFetch('/api/leads')
-    leads.value = data.value || []
-    console.log('Fetched leads:', leads.value)
+  L = window.L
+  XLSX = await import('xlsx')
 
-    map.value = L.map('map').setView([33.8121, -117.9190], 12)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map.value)
+  // Fetch API response
+  const response = await fetch('/api/leads')
+  const result = await response.json()
+  console.log('Fetched leads result:', result)
 
-    const markers = leads.value.map(lead =>
-      L.marker([lead.lat, lead.lng])
-        .bindPopup(`${lead.address}<br>${lead.status}`)
-        .addTo(map.value)
-    )
+  // If it's an object like { data: [...] }, extract the data
+  if (Array.isArray(result)) {
+    leads.value = result
+  } else if (Array.isArray(result.data)) {
+    leads.value = result.data
+  } else {
+    console.warn('No valid leads found in API response.')
+    leads.value = []
+  }
 
-    const drawnItems = new L.FeatureGroup()
-    map.value.addLayer(drawnItems)
+  // Fix "Map container already initialized" error
+  const mapContainer = document.getElementById('map')
+  if (mapContainer && mapContainer._leaflet_id) {
+    mapContainer._leaflet_id = null
+  }
 
-    const drawControl = new L.Control.Draw({
-      draw: {
-        polyline: false,
-        rectangle: true,
-        circle: false,
-        marker: false,
-        polygon: true
-      },
-      edit: {
-        featureGroup: drawnItems 
+  // Initialize map
+  map.value = L.map('map').setView([33.8121, -117.9190], 13)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map.value)
+
+  // Add markers
+  if (Array.isArray(leads.value)) {
+    leads.value.forEach(lead => {
+      if (lead.lat && lead.lng) {
+        L.marker([lead.lat, lead.lng])
+          .bindPopup(`${lead.address}<br>${lead.status}`)
+          .addTo(map.value)
       }
     })
-    map.value.addControl(drawControl)
-
-    map.value.on('draw:created', function (e) {
-      drawnItems.clearLayers()
-      drawnItems.addLayer(e.layer)
-      const layer = e.layer
-
-      const selected = leads.value.filter(lead =>
-        layer.getBounds().contains(L.latLng(lead.lat, lead.lng))
-      )
-
-      selectedLeads.value = selected
-      console.log('Selected leads:', selected)
-    })
   }
+
+  // Drawing setup
+  const drawnItems = new L.FeatureGroup()
+  map.value.addLayer(drawnItems)
+
+  const freeHandControl = new L.Control.FreeHandShapes({
+    position: 'topleft',
+    layer: drawnItems,
+    multiple: false
+  })
+
+  map.value.addControl(freeHandControl)
+
+  map.value.on('freehandshapes.created', (e) => {
+  const polygon = e.layer
+  drawnItems.clearLayers()
+  drawnItems.addLayer(polygon)
+
+  if (!polygon?.getBounds?.()) {
+    console.warn('Polygon bounds not available.')
+    return
+  }
+
+  const bounds = polygon.getBounds()
+  const selected = leads.value.filter(lead => {
+    const point = L.latLng(lead.lat, lead.lng)
+    return bounds.contains(point)
+  })
+
+  selectedLeads.value = selected
+  console.log('Selected (freehand) leads:', selected)
 })
+
+})
+
 
 function exportSelected() {
   if (selectedLeads.value.length === 0) {
@@ -81,7 +124,7 @@ function exportSelected() {
   const worksheet = XLSX.utils.json_to_sheet(data)
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads')
-
   XLSX.writeFile(workbook, 'Selected_Leads.xlsx')
 }
 </script>
+

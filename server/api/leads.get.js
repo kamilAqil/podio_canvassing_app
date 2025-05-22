@@ -25,36 +25,51 @@ export default eventHandler(async (event) => {
         })
     })
 
-    const response = await podio.request('POST', `/item/app/${appId}/filter/`, {
-        filters: {},
-        limit: 100
-    })
 
+    const response = await podio.request('POST', `/item/app/${appId}/filter/`, {
+        filters: {
+           
+        },
+        limit: 100,
+    })
     const items = response.items || []
     let item1 = items[0];
-    console.log('Item 1 fields', item1.fields);
+    console.log('Items', items.length);
     
     
-    return items.map(item => {
-        const fieldMap = {}
-        
-        
-        item.fields.forEach(field => {
-            fieldMap[field.label.toLowerCase().replace(/\s+/g, '_')] = field.values[0]?.value || null
-        })
+    return items
+        .map(item => {
+            const fieldMap = {}
+            item.fields.forEach(field => {
+                fieldMap[field.label.toLowerCase().replace(/\s+/g, '_')] = field.values[0]?.value || null
+            })
 
-        console.log('Field Map', fieldMap);
-        console.log('~~~~~~~~~~~');
-        
-        
-        return {
-            id: item.item_id,
-            address: fieldMap.address?.formatted || fieldMap.address || 'Unknown',
-            status: fieldMap.status,
-            foreclosureDate: fieldMap.foreclosure_date?.start || null,
-            auctionDate: fieldMap.auction_date?.start || null,
-            lat: fieldMap.address?.lat || null,
-            lng: fieldMap.address?.lng || null
-        }
-    })
+            const latRaw = stripHtml(fieldMap.latitude)
+            const lngRaw = stripHtml(fieldMap.longitude)
+
+            if (!latRaw || !lngRaw) return null 
+            const lat = parseFloat(latRaw)
+            const lng = parseFloat(lngRaw)
+
+            if (isNaN(lat) || isNaN(lng)) return null 
+
+            return {
+                id: item.item_id,
+                address: fieldMap.address?.formatted || fieldMap.address || 'Unknown',
+                status: fieldMap.status,
+                foreclosureDate: fieldMap.fcl_rec_date?.start || null,
+                auctionDate: fieldMap.auction_date?.start || null,
+                lat,
+                lng
+            }
+        })
+        .filter(Boolean)
 })
+
+
+function stripHtml(html) {
+    if (typeof html === 'string') {
+        return html.replace(/<\/?[^>]+(>|$)/g, '').trim()
+    }
+    return null
+}

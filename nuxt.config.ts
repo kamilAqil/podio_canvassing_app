@@ -1,3 +1,4 @@
+
 export default defineNuxtConfig({
   css: ["leaflet/dist/leaflet.css", "leaflet-draw/dist/leaflet.draw.css"],
 
